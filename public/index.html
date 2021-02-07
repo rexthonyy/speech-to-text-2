@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+		<title>Optimus Text to speech test</title>
+		<script src="https://www.WebRTC-Experiment.com/RecordRTC.js"></script>
+		<script type="text/javascript" src="/socket.io/socket.io.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io-stream/0.9.1/socket.io-stream.js"></script>
+		<style>
+			body{
+				text-align: center;
+			}
+			
+			#emotion{
+				margin-top: 32px;
+				font-size: 24px;
+				color: gray;
+			}
+			
+			#speech{
+				margin-top: 16px;
+				font-size: 18px;
+			}
+			
+			.container{
+				width: 50%;
+				position: absolute;
+				top: 50%;
+				left: 50%;
+				transform: translate(-50%, -50%);
+			}
+			
+			button{
+				cursor: pointer;
+				margin: 10px;
+				font-size: 16px;
+				padding: 8px;
+			}
+			
+			#version{
+				margin-top: 32px;
+				font-size: 8px;
+				color: gray;
+			}
+		</style>
+	</head>
+
+	<body>
+		<div class="container">
+			<h1>Speech to text</h1>
+			<p id="emotion">Neutral</p>
+			<p id="speech">Click start to begin recording</p>
+			<div>
+				<button id="startBtn">Start recording</button>
+				<button id="stopBtn">Stop recording</button>
+			</div>
+			<p id="version">v 2.0</p>
+		</div>
+	</body>	
+	<script>
+		let speechElm = document.getElementById("speech");
+		let emotionElm = document.getElementById("emotion");
+		let startBtn = document.getElementById("startBtn");
+		let stopBtn = document.getElementById("stopBtn");
+		startBtn.disabled = stopBtn.disabled = true;
+		
+		let recordAudio;
+		let speechText = "";
+		
+		const socketio = io();
+		const socket = socketio.on('connect', function() {
+			startBtn.disabled = false;
+		});
+		
+		function aMap(val, minF, maxF, minT, maxT){
+			return minT + (((val - minF)/(maxF - minF)) * (maxT - minT));
+		}
+		
+		socketio.on('transcriptionText', function (text) {
+			speechText += " " + text;
+			speechElm.textContent = speechText;
+			socket.emit('get-sentiment', speechText);
+		});
+		
+		socketio.on('sentimentValue', range => {
+			let value = Math.round(aMap(range, -5, 5, 0, 4)); //AFINN produces a rating between -5 and 5
+			let emotion = "";
+			let color = "";
+			
+			switch(value){
+				case 0:
+					emotion = "Very poor";
+					color  = "red";
+				break;
+				
+				case 1:
+					emotion = "Poor";
+					color = "orange";
+				break;
+				
+				case 2:
+					emotion = "Fair";
+					color = "yellow";
+				break;
+				
+				case 3:
+					emotion = "Good";
+					color = "rgb(50, 255, 50)";
+				break;
+				
+				case 3:
+					emotion = "Good";
+					color = "rgb(50, 255, 50)";
+				break;
+			}
+			
+			emotionElm.textContent = emotion;
+			emotionElm.style.color = color;
+			
+			console.log("emotion : " + emotion);
+			console.log("value : " + value);
+		});
+		
+		startBtn.onclick = function() {
+			startBtn.disabled = true;
+
+			navigator.getUserMedia({
+				audio: true
+			}, 
+			function(stream) {
+				speechElm.textContent = "Speak now";
+				recordAudio = RecordRTC(stream, {
+					type: 'audio',
+					mimeType: 'audio/webm',
+					sampleRate: 44100,
+					desiredSampRate: 16000,
+					
+					recorderType: StereoAudioRecorder,
+					numberOfAudioChannels: 1,
+
+
+					//1)
+					// get intervals based blobs
+					// value in milliseconds
+					// as you might not want to make detect calls every seconds
+					timeSlice: 4000,
+
+					//2)
+					// as soon as the stream is available
+					ondataavailable: function(blob) {
+
+						// 3
+						// making use of socket.io-stream for bi-directional
+						// streaming, create a stream
+						var stream = ss.createStream();
+						// stream directly to server
+						// it will be temp. stored locally
+						ss(socket).emit('stream-transcribe', stream, {
+							name: 'stream.wav', 
+							size: blob.size
+						});
+						// pipe the audio blob to the read stream
+						ss.createBlobReadStream(blob).pipe(stream);
+					}
+				});
+
+				recordAudio.startRecording();
+				stopBtn.disabled = false;
+			}, function(error) {
+				console.error(JSON.stringify(error));
+			});
+		};
+		
+		stopBtn.onclick = function() {
+			// recording stopped
+			startBtn.disabled = false;
+			stopBtn.disabled = true;
+			
+			speechText = "";
+			speechElm.textContent = "";
+		};
+	</script>
+</html>
