@@ -54,7 +54,7 @@ function setupServer() {
 				}
             });
         });
-		
+		//pass in an audio 
 		client.on('get-sentiment', text => {
 			let result = sentiment.analyze(text).comparative;
 			client.emit('sentimentValue', result);
